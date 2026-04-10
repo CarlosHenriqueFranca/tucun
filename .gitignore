@@ -44,3 +44,18 @@ coverage
 
 # Expo
 .expo
+.expo-shared/
+web-build/
+
+# Cache
+.cache/
+.eslintcache
+
+# TypeScript
+*.js.map
+
+# Docker (não commitar dados locais)
+infrastructure/docker/postgres/data/
+
+# Claude
+.claude/

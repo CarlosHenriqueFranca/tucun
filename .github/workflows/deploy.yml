@@ -1,0 +1,58 @@
+name: Deploy — Tucun
+
+on:
+  push:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ─── Deploy API ──────────────────────────────────────────
+  deploy-api:
+    name: Deploy API
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build API
+        run: npm run build --workspace=apps/api
+
+      - name: Deploy to Railway/Render
+        # Configure your deployment target here
+        # Options: Railway, Render, DigitalOcean App Platform, AWS ECS
+        run: echo "Configure deployment target in workflow"
+        # Example for Railway:
+        # uses: bervProject/railway-deploy@v1.2.0
+        # with:
+        #   railway_token: ${{ secrets.RAILWAY_TOKEN }}
+        #   service: tucun-api
+
+  # ─── Deploy Web ──────────────────────────────────────────
+  deploy-web:
+    name: Deploy Web
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+          working-directory: ./apps/web
+          vercel-args: '--prod'

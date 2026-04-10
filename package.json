@@ -11,7 +11,14 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "db:migrate": "npm run typeorm --workspace=apps/api -- migration:run -d src/database/data-source.ts",
+    "db:migrate:revert": "npm run typeorm --workspace=apps/api -- migration:revert -d src/database/data-source.ts",
+    "db:migrate:generate": "npm run typeorm --workspace=apps/api -- migration:generate",
+    "infra:up": "docker compose -f infrastructure/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infrastructure/docker-compose.yml down",
+    "infra:logs": "docker compose -f infrastructure/docker-compose.yml logs -f",
+    "infra:reset": "docker compose -f infrastructure/docker-compose.yml down -v"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
