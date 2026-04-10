@@ -211,8 +211,6 @@ const styles = StyleSheet.create({
   cover: {
     height: 120,
     backgroundColor: COLORS.primary,
-    // Could be an Image component in production
-    backgroundImage: undefined,
   },
   avatarWrapper: {
     position: "absolute",
