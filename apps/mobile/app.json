@@ -45,12 +45,12 @@
         "@rnmapbox/maps",
         {
           "RNMapboxMapsImpl": "mapbox",
-          "RNMapboxMapsDownloadToken": "COLOQUE_SEU_SK_TOKEN_AQUI"
+          "RNMapboxMapsDownloadToken": "sk.eyJ1IjoiY2FybG9zaGVucmlxdWVmcmFuY2EiLCJhIjoiY21udDd4b21zMDdiZTJwb2hxYmc2czd4byJ9.DcZ6In_38LXfxOxg1BWggA"
         }
       ]
     ],
     "extra": {
-      "EXPO_PUBLIC_MAPBOX_TOKEN": "COLOQUE_SEU_PK_TOKEN_AQUI"
+      "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2FybG9zaGVucmlxdWVmcmFuY2EiLCJhIjoiY21udDc1M2g4MGx6aDJycTFzeTN0d2N4cSJ9.52ujdv0Fq3ZXxQOiTCp6ZQ"
     },
     "experiments": {
       "typedRoutes": true
