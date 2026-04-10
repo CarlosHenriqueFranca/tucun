@@ -1,8 +1,4 @@
-// Map screen — UI layout with placeholder map view
-// Real Mapbox integration requires expo prebuild / native build (expo run:ios or expo run:android)
-// The rnmapbox/maps package is installed and ready; import MapView from '@rnmapbox/maps' in native builds.
-
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,116 +6,254 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
-  Dimensions,
+  Linking,
+  Platform,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { COLORS, SPOT_TYPES } from "../../src/constants";
+import Mapbox, {
+  MapView,
+  Camera,
+  UserLocation,
+  ShapeSource,
+  CircleLayer,
+  SymbolLayer,
+} from "@rnmapbox/maps";
+// @ts-expect-error turf types need bundler resolution
+import { featureCollection, point } from "@turf/helpers";
+import {
+  COLORS,
+  MAPBOX_ACCESS_TOKEN,
+  SPOT_TYPES,
+  SPOT_TYPE_MAP,
+  SpotTypeId,
+} from "../../src/constants";
 import { useLocation } from "../../src/hooks/use-location";
+import { useNearbySpots, NearbySpot } from "../../src/hooks/use-nearby-spots";
+import { CreateSpotSheet } from "../../src/components/create-spot-sheet";
 
-const { width: W, height: H } = Dimensions.get("window");
+// Initialize Mapbox
+Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
-const MOCK_SPOTS = [
-  { id: "1", name: "Rio Madeira — Porto Velho", type: "river", fish: "Tucunaré", distance: "2.4km" },
-  { id: "2", name: "Lago do Cuniã", type: "lake", fish: "Tambaqui", distance: "12km" },
-  { id: "3", name: "Represa Samuel", type: "reservoir", fish: "Pirarucu", distance: "28km" },
-  { id: "4", name: "Igarapé do Inferno", type: "stream", fish: "Traíra", distance: "5km" },
-];
+const DEFAULT_CENTER: [number, number] = [-63.9004, -8.7612]; // Porto Velho
+const DEFAULT_ZOOM = 12;
 
 export default function MapScreen() {
-  const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const cameraRef = useRef<Camera>(null);
+  const [activeFilter, setActiveFilter] = useState<SpotTypeId | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedSpot, setSelectedSpot] = useState<typeof MOCK_SPOTS[number] | null>(null);
-  const { getCurrentLocation, loading: locationLoading } = useLocation();
+  const [selectedSpot, setSelectedSpot] = useState<NearbySpot | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [tapCoords, setTapCoords] = useState<[number, number]>(DEFAULT_CENTER);
+  const [showHint, setShowHint] = useState(false);
 
-  const filteredSpots = MOCK_SPOTS.filter((s) => {
-    const matchesType = activeFilter ? s.type === activeFilter : true;
-    const matchesSearch = search
-      ? s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.fish.toLowerCase().includes(search.toLowerCase())
-      : true;
-    return matchesType && matchesSearch;
+  const { location, getCurrentLocation, loading: locLoading } = useLocation();
+  const { spots, loading: spotsLoading, fetch: fetchSpots } = useNearbySpots({
+    type: activeFilter ?? undefined,
+    radius: 100_000,
   });
 
-  async function handleNearMe() {
-    await getCurrentLocation();
-    // In native build: fly MapView camera to user coordinates
+  // Fetch on mount + filter change
+  useEffect(() => {
+    const lat = location?.latitude ?? DEFAULT_CENTER[1];
+    const lng = location?.longitude ?? DEFAULT_CENTER[0];
+    fetchSpots(lat, lng);
+  }, [location, activeFilter]);
+
+  const handleNearMe = useCallback(async () => {
+    const coords = await getCurrentLocation();
+    if (coords) {
+      cameraRef.current?.flyTo([coords.longitude, coords.latitude], 800);
+      fetchSpots(coords.latitude, coords.longitude);
+    }
+  }, [getCurrentLocation, fetchSpots]);
+
+  // Filter by search text
+  const visibleSpots = spots.filter((s) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      (s.city ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  // GeoJSON for Mapbox layers
+  const geojson = featureCollection(
+    visibleSpots.map((s) =>
+      point([s.longitude, s.latitude], {
+        id: s.id,
+        name: s.name,
+        type: s.type,
+        emoji: SPOT_TYPE_MAP[s.type]?.emoji ?? "📍",
+        color: SPOT_TYPE_MAP[s.type]?.color ?? COLORS.secondary,
+        rating: s.averageRating,
+        distance: formatDist(s.distanceMeters),
+        verified: s.isVerified,
+      })
+    )
+  );
+
+  function openNav(spot: NearbySpot) {
+    const label = encodeURIComponent(spot.name);
+    const url =
+      Platform.OS === "ios"
+        ? `maps://?q=${label}&ll=${spot.latitude},${spot.longitude}`
+        : `geo:${spot.latitude},${spot.longitude}?q=${label}`;
+    Linking.openURL(url).catch(() =>
+      Linking.openURL(
+        `https://www.google.com/maps/search/?api=1&query=${spot.latitude},${spot.longitude}`
+      )
+    );
+  }
+
+  function handleLongPress(e: { geometry: { coordinates: number[] } }) {
+    const [lng, lat] = e.geometry.coordinates;
+    setTapCoords([lng, lat]);
+    setShowCreate(true);
+    setShowHint(false);
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      {/* MAP PLACEHOLDER — replace with <MapboxGL.MapView> in native build */}
-      <View style={styles.mapPlaceholder}>
-        <View style={styles.mapBg}>
-          {/* Grid lines suggesting map tiles */}
-          {[...Array(8)].map((_, i) => (
-            <View key={`h${i}`} style={[styles.gridLine, styles.gridH, { top: `${i * 14.3}%` }]} />
-          ))}
-          {[...Array(6)].map((_, i) => (
-            <View key={`v${i}`} style={[styles.gridLine, styles.gridV, { left: `${i * 20}%` }]} />
-          ))}
-          {/* Mock pins */}
-          {MOCK_SPOTS.map((spot, i) => (
-            <TouchableOpacity
-              key={spot.id}
-              style={[
-                styles.mapPin,
-                {
-                  top: `${20 + i * 18}%`,
-                  left: `${15 + i * 20}%`,
-                },
-              ]}
-              onPress={() => setSelectedSpot(spot)}
-            >
-              <Text style={styles.pinEmoji}>📍</Text>
-            </TouchableOpacity>
-          ))}
-          <Text style={styles.mapLabel}>🗺️ Mapa Interativo</Text>
-          <Text style={styles.mapSub}>
-            Requer build nativo (expo run:ios / expo run:android)
-          </Text>
-        </View>
+    <SafeAreaView style={s.safe} edges={["top"]}>
+      {/* MAP */}
+      <MapView
+        style={s.map}
+        styleURL={Mapbox.StyleURL.Dark}
+        compassEnabled
+        scaleBarEnabled={false}
+        attributionEnabled={false}
+        logoEnabled={false}
+        onLongPress={handleLongPress}
+      >
+        <Camera
+          ref={cameraRef}
+          centerCoordinate={
+            location
+              ? [location.longitude, location.latitude]
+              : DEFAULT_CENTER
+          }
+          zoomLevel={DEFAULT_ZOOM}
+          animationDuration={800}
+        />
+
+        <UserLocation visible animated />
+
+        {visibleSpots.length > 0 && (
+          <ShapeSource
+            id="spots"
+            shape={geojson}
+            cluster
+            clusterRadius={50}
+            clusterMaxZoomLevel={14}
+            onPress={(e) => {
+              const f = e.features[0];
+              if (!f?.properties?.cluster) {
+                const spot = visibleSpots.find((sp) => sp.id === f?.properties?.id);
+                if (spot) {
+                  setSelectedSpot(spot);
+                  cameraRef.current?.flyTo([spot.longitude, spot.latitude], 400);
+                }
+              }
+            }}
+          >
+            {/* Cluster circle */}
+            <CircleLayer
+              id="clusters"
+              filter={["has", "point_count"]}
+              style={{
+                circleRadius: ["step", ["get", "point_count"], 20, 5, 28, 20, 36],
+                circleColor: COLORS.primary,
+                circleStrokeWidth: 2,
+                circleStrokeColor: COLORS.secondary,
+                circleOpacity: 0.92,
+              }}
+            />
+            <SymbolLayer
+              id="cluster-count"
+              filter={["has", "point_count"]}
+              style={{
+                textField: ["get", "point_count_abbreviated"],
+                textFont: ["DIN Offc Pro Bold", "Arial Unicode MS Bold"],
+                textSize: 14,
+                textColor: "#fff",
+              }}
+            />
+
+            {/* Individual spot */}
+            <CircleLayer
+              id="spots-dot"
+              filter={["!", ["has", "point_count"]]}
+              style={{
+                circleRadius: 11,
+                circleColor: ["get", "color"],
+                circleStrokeWidth: 2,
+                circleStrokeColor: "#fff",
+              }}
+            />
+            <SymbolLayer
+              id="spots-icon"
+              filter={["!", ["has", "point_count"]]}
+              style={{
+                textField: ["get", "emoji"],
+                textSize: 13,
+                textAllowOverlap: true,
+              }}
+            />
+          </ShapeSource>
+        )}
+      </MapView>
+
+      {/* SEARCH */}
+      <View style={s.searchBox}>
+        <Text style={s.searchIcon}>🔍</Text>
+        <TextInput
+          style={s.searchInput}
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Buscar pontos, cidades..."
+          placeholderTextColor={COLORS.textMuted}
+          returnKeyType="search"
+        />
+        {spotsLoading && (
+          <ActivityIndicator size="small" color={COLORS.secondary} />
+        )}
       </View>
 
-      {/* Search bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchRow}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Buscar pontos, peixes..."
-            placeholderTextColor={COLORS.textMuted}
-          />
-        </View>
-      </View>
-
-      {/* Filters */}
+      {/* FILTERS */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={styles.filters}
-        contentContainerStyle={styles.filtersContent}
+        style={s.filtersRow}
+        contentContainerStyle={s.filtersInner}
       >
         <TouchableOpacity
-          style={[styles.filterChip, !activeFilter && styles.filterActive]}
+          style={[s.chip, !activeFilter && s.chipActive]}
           onPress={() => setActiveFilter(null)}
         >
-          <Text style={[styles.filterText, !activeFilter && styles.filterTextActive]}>
+          <Text style={[s.chipText, !activeFilter && s.chipTextActive]}>
             Todos
           </Text>
         </TouchableOpacity>
         {SPOT_TYPES.map((t) => (
           <TouchableOpacity
             key={t.id}
-            style={[styles.filterChip, activeFilter === t.id && styles.filterActive]}
-            onPress={() => setActiveFilter(activeFilter === t.id ? null : t.id)}
+            style={[
+              s.chip,
+              activeFilter === t.id && {
+                backgroundColor: t.color,
+                borderColor: t.color,
+              },
+            ]}
+            onPress={() =>
+              setActiveFilter(activeFilter === t.id ? null : t.id)
+            }
           >
-            <Text style={styles.filterEmoji}>{t.emoji}</Text>
+            <Text style={s.chipEmoji}>{t.emoji}</Text>
             <Text
               style={[
-                styles.filterText,
-                activeFilter === t.id && styles.filterTextActive,
+                s.chipText,
+                activeFilter === t.id && s.chipTextActive,
               ]}
             >
               {t.label}
@@ -128,334 +262,266 @@ export default function MapScreen() {
         ))}
       </ScrollView>
 
-      {/* Near Me Button */}
+      {/* SIDE BUTTONS */}
+      <View style={s.side}>
+        <TouchableOpacity
+          style={s.sideBtn}
+          onPress={handleNearMe}
+          disabled={locLoading}
+        >
+          <Text style={s.sideBtnTxt}>{locLoading ? "⏳" : "📍"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={s.sideBtn}
+          onPress={() => setShowHint((v) => !v)}
+        >
+          <Text style={s.sideBtnTxt}>➕</Text>
+        </TouchableOpacity>
+      </View>
+
+      {showHint && (
+        <View style={s.hint}>
+          <Text style={s.hintTxt}>
+            Pressione e segure no mapa para adicionar um ponto
+          </Text>
+        </View>
+      )}
+
+      {/* FAB */}
       <TouchableOpacity
-        style={styles.nearMeBtn}
-        onPress={handleNearMe}
-        disabled={locationLoading}
+        style={s.fab}
+        onPress={() => {
+          setTapCoords(
+            location
+              ? [location.longitude, location.latitude]
+              : DEFAULT_CENTER
+          );
+          setShowCreate(true);
+        }}
         activeOpacity={0.85}
       >
-        <Text style={styles.nearMeText}>
-          {locationLoading ? "Localizando..." : "📍 Perto de mim"}
-        </Text>
+        <Text style={s.fabTxt}>+</Text>
       </TouchableOpacity>
 
-      {/* FAB — Add spot */}
-      <TouchableOpacity style={styles.fab} activeOpacity={0.85}>
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
-
-      {/* Bottom Sheet — selected spot */}
+      {/* SELECTED SPOT SHEET */}
       {selectedSpot && (
-        <View style={styles.bottomSheet}>
-          <View style={styles.sheetHandle} />
-          <View style={styles.sheetRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sheetTitle}>{selectedSpot.name}</Text>
-              <Text style={styles.sheetMeta}>
-                🐟 {selectedSpot.fish} · 📏 {selectedSpot.distance}
+        <View style={s.sheet}>
+          <View style={s.handle} />
+          <View style={s.sheetRow}>
+            <View style={s.typeTag}>
+              <Text style={s.typeEmoji}>
+                {SPOT_TYPE_MAP[selectedSpot.type]?.emoji ?? "📍"}
               </Text>
             </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={s.sheetTitle} numberOfLines={1}>
+                  {selectedSpot.name}
+                </Text>
+                {selectedSpot.isVerified && (
+                  <Text style={{ color: COLORS.success, fontWeight: "700" }}>✓</Text>
+                )}
+              </View>
+              <Text style={s.sheetMeta}>
+                {SPOT_TYPE_MAP[selectedSpot.type]?.label}
+                {selectedSpot.city ? ` · ${selectedSpot.city}` : ""}
+                {" · "}
+                {formatDist(selectedSpot.distanceMeters)}
+              </Text>
+              {selectedSpot.averageRating > 0 && (
+                <Text style={{ color: COLORS.accent, fontSize: 13, marginTop: 3 }}>
+                  ⭐ {selectedSpot.averageRating.toFixed(1)} (
+                  {selectedSpot.totalRatings} avaliações)
+                </Text>
+              )}
+            </View>
             <TouchableOpacity onPress={() => setSelectedSpot(null)}>
-              <Text style={styles.sheetClose}>✕</Text>
+              <Text style={s.closeBtn}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.sheetActions}>
-            <TouchableOpacity style={styles.sheetBtn}>
-              <Text style={styles.sheetBtnText}>🧭 Navegar</Text>
+          <View style={s.actions}>
+            <TouchableOpacity
+              style={s.actionBtn}
+              onPress={() => openNav(selectedSpot)}
+            >
+              <Text style={s.actionBtnTxt}>🧭 Navegar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.sheetBtn, styles.sheetBtnSecondary]}>
-              <Text style={[styles.sheetBtnText, { color: COLORS.secondary }]}>
-                📸 Ver Posts
+            <TouchableOpacity style={[s.actionBtn, s.actionBtnGhost]}>
+              <Text style={[s.actionBtnTxt, { color: COLORS.secondary }]}>
+                📸 Posts
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.actionBtn, s.actionBtnGhost]}>
+              <Text style={[s.actionBtnTxt, { color: COLORS.accent }]}>
+                ⭐ Avaliar
               </Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* Nearby spots list */}
-      {!selectedSpot && (
-        <View style={styles.spotsList}>
-          <Text style={styles.spotsListTitle}>Pontos próximos</Text>
+      {/* NEARBY LIST */}
+      {!selectedSpot && visibleSpots.length > 0 && (
+        <View style={s.nearbyPanel}>
+          <Text style={s.nearbyTitle}>{visibleSpots.length} pontos próximos</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {filteredSpots.map((spot) => (
+            {visibleSpots.slice(0, 10).map((spot) => (
               <TouchableOpacity
                 key={spot.id}
-                style={styles.spotCard}
-                onPress={() => setSelectedSpot(spot)}
-                activeOpacity={0.85}
+                style={s.nearbyCard}
+                onPress={() => {
+                  setSelectedSpot(spot);
+                  cameraRef.current?.flyTo(
+                    [spot.longitude, spot.latitude],
+                    600
+                  );
+                }}
               >
-                <Text style={styles.spotEmoji}>
-                  {SPOT_TYPES.find((t) => t.id === spot.type)?.emoji ?? "📍"}
+                <Text style={s.nearbyEmoji}>
+                  {SPOT_TYPE_MAP[spot.type]?.emoji ?? "📍"}
                 </Text>
-                <Text style={styles.spotName} numberOfLines={1}>
+                <Text style={s.nearbyName} numberOfLines={2}>
                   {spot.name}
                 </Text>
-                <Text style={styles.spotMeta}>🐟 {spot.fish}</Text>
-                <Text style={styles.spotDist}>{spot.distance}</Text>
+                {spot.averageRating > 0 && (
+                  <Text style={s.nearbyRating}>
+                    ⭐ {spot.averageRating.toFixed(1)}
+                  </Text>
+                )}
+                <Text style={s.nearbyDist}>
+                  {formatDist(spot.distanceMeters)}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
       )}
+
+      {/* CREATE SPOT */}
+      <CreateSpotSheet
+        visible={showCreate}
+        latitude={tapCoords[1]}
+        longitude={tapCoords[0]}
+        onClose={() => setShowCreate(false)}
+        onCreated={() => {
+          fetchSpots(
+            location?.latitude ?? DEFAULT_CENTER[1],
+            location?.longitude ?? DEFAULT_CENTER[0]
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+function formatDist(m: number): string {
+  if (!m) return "";
+  return m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`;
+}
+
+const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
-  mapPlaceholder: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  map: { flex: 1 },
+
+  searchBox: {
+    position: "absolute", top: 56, left: 16, right: 16, zIndex: 10,
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: COLORS.surface, borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 11,
+    borderWidth: 1, borderColor: COLORS.border,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 12, elevation: 10,
   },
-  mapBg: {
-    flex: 1,
-    backgroundColor: "#0D1E35",
-    overflow: "hidden",
+  searchIcon: { fontSize: 16 },
+  searchInput: { flex: 1, color: COLORS.text, fontSize: 15 },
+
+  filtersRow: { position: "absolute", top: 115, left: 0, right: 0, zIndex: 10 },
+  filtersInner: { paddingHorizontal: 16, gap: 8 },
+  chip: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 13, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
   },
-  gridLine: {
-    position: "absolute",
-    backgroundColor: "rgba(64,145,108,0.06)",
+  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.secondary },
+  chipEmoji: { fontSize: 13 },
+  chipText: { color: COLORS.textMuted, fontSize: 13, fontWeight: "600" },
+  chipTextActive: { color: COLORS.text },
+
+  side: { position: "absolute", right: 16, top: 175, zIndex: 10, gap: 10 },
+  sideBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3, shadowRadius: 6, elevation: 6,
   },
-  gridH: { left: 0, right: 0, height: 1 },
-  gridV: { top: 0, bottom: 0, width: 1 },
-  mapPin: {
-    position: "absolute",
-    zIndex: 2,
+  sideBtnTxt: { fontSize: 20 },
+
+  hint: {
+    position: "absolute", right: 68, top: 220, zIndex: 10,
+    backgroundColor: COLORS.surface, borderRadius: 10, padding: 10,
+    borderWidth: 1, borderColor: COLORS.border, maxWidth: 200,
   },
-  pinEmoji: { fontSize: 28 },
-  mapLabel: {
-    position: "absolute",
-    bottom: 220,
-    alignSelf: "center",
-    color: COLORS.textMuted,
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  mapSub: {
-    position: "absolute",
-    bottom: 200,
-    alignSelf: "center",
-    color: COLORS.textMuted,
-    fontSize: 11,
-    opacity: 0.6,
-  },
-  searchContainer: {
-    position: "absolute",
-    top: 100,
-    left: 16,
-    right: 16,
-    zIndex: 10,
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  searchIcon: { fontSize: 18 },
-  searchInput: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 15,
-  },
-  filters: {
-    position: "absolute",
-    top: 165,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
-  filtersContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  filterActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.secondary,
-  },
-  filterEmoji: { fontSize: 14 },
-  filterText: {
-    color: COLORS.textMuted,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  filterTextActive: {
-    color: COLORS.secondary,
-  },
-  nearMeBtn: {
-    position: "absolute",
-    top: 220,
-    right: 16,
-    zIndex: 10,
-    backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  nearMeText: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: "600",
-  },
+  hintTxt: { color: COLORS.text, fontSize: 12 },
+
   fab: {
-    position: "absolute",
-    bottom: 180,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    position: "absolute", bottom: 190, right: 20, zIndex: 20,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: COLORS.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 20,
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    elevation: 12,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45, shadowRadius: 12, elevation: 12,
   },
-  fabText: { color: "#fff", fontSize: 28, fontWeight: "700", lineHeight: 32 },
-  bottomSheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-    zIndex: 30,
+  fabTxt: { color: "#fff", fontSize: 28, fontWeight: "700", lineHeight: 32 },
+
+  sheet: {
+    position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 30,
+    backgroundColor: COLORS.surface, borderTopLeftRadius: 24,
+    borderTopRightRadius: 24, padding: 20,
+    borderTopWidth: 1, borderColor: COLORS.border,
   },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    alignSelf: "center",
-    marginBottom: 16,
+  handle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: COLORS.border, alignSelf: "center", marginBottom: 16,
   },
-  sheetRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
+  sheetRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  typeTag: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border,
+    alignItems: "center", justifyContent: "center",
   },
-  sheetTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: "700",
+  typeEmoji: { fontSize: 20 },
+  sheetTitle: { color: COLORS.text, fontSize: 17, fontWeight: "700", flex: 1 },
+  sheetMeta: { color: COLORS.textMuted, fontSize: 13, marginTop: 3 },
+  closeBtn: { color: COLORS.textMuted, fontSize: 20, padding: 4 },
+  actions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  actionBtn: {
+    flex: 1, backgroundColor: COLORS.accent, borderRadius: 12,
+    paddingVertical: 12, alignItems: "center",
   },
-  sheetMeta: {
-    color: COLORS.textMuted,
-    fontSize: 14,
-    marginTop: 4,
+  actionBtnGhost: {
+    backgroundColor: "transparent", borderWidth: 1, borderColor: COLORS.border,
   },
-  sheetClose: {
-    color: COLORS.textMuted,
-    fontSize: 20,
-    padding: 4,
+  actionBtnTxt: { color: "#fff", fontSize: 13, fontWeight: "700" },
+
+  nearbyPanel: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    backgroundColor: COLORS.surface, borderTopLeftRadius: 24,
+    borderTopRightRadius: 24, paddingTop: 14, paddingBottom: 6,
+    borderTopWidth: 1, borderColor: COLORS.border,
   },
-  sheetActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 16,
+  nearbyTitle: {
+    color: COLORS.text, fontSize: 14, fontWeight: "700",
+    paddingHorizontal: 16, marginBottom: 10,
   },
-  sheetBtn: {
-    flex: 1,
-    backgroundColor: COLORS.accent,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
+  nearbyCard: {
+    backgroundColor: COLORS.background, borderRadius: 14,
+    padding: 13, marginLeft: 16, width: 130,
+    borderWidth: 1, borderColor: COLORS.border, marginBottom: 14,
   },
-  sheetBtnSecondary: {
-    backgroundColor: "rgba(64,145,108,0.15)",
-    borderWidth: 1,
-    borderColor: COLORS.secondary,
-  },
-  sheetBtnText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  spotsList: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 16,
-    paddingBottom: 8,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-  },
-  spotsListTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "700",
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  spotCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 14,
-    padding: 14,
-    marginLeft: 16,
-    width: 140,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 16,
-  },
-  spotEmoji: { fontSize: 24, marginBottom: 6 },
-  spotName: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  spotMeta: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    marginTop: 4,
-  },
-  spotDist: {
-    color: COLORS.secondary,
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 4,
-  },
+  nearbyEmoji: { fontSize: 22, marginBottom: 6 },
+  nearbyName: { color: COLORS.text, fontSize: 12, fontWeight: "700" },
+  nearbyRating: { color: COLORS.accent, fontSize: 11, marginTop: 4 },
+  nearbyDist: { color: COLORS.secondary, fontSize: 11, fontWeight: "600", marginTop: 3 },
 });
