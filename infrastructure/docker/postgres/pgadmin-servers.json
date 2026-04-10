@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Tucun Local",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "tucun",
+      "Username": "tucun",
+      "SSLMode": "prefer",
+      "PassFile": "/tmp/pgpassfile"
+    }
+  }
+}

@@ -1,0 +1,127 @@
+version: '3.9'
+
+# ============================================================
+# TUCUN — Infraestrutura Local de Desenvolvimento
+# ============================================================
+# Rodar: docker compose up -d
+# Parar: docker compose down
+# Logs:  docker compose logs -f [servico]
+# Reset: docker compose down -v (APAGA DADOS!)
+# ============================================================
+
+services:
+
+  # ── PostgreSQL com PostGIS ──────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: tucun_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tucun
+      POSTGRES_USER: tucun
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tucun_dev_password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=pt_BR.UTF-8"
+      TZ: America/Porto_Velho
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tucun -d tucun"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - tucun_network
+
+  # ── Redis ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: tucun_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-tucun_redis_dev}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-tucun_redis_dev}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - tucun_network
+
+  # ── NGINX Reverse Proxy ─────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: tucun_nginx
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - tucun_network
+
+  # ── Redis Commander (GUI para Redis) ────────────────────
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: tucun_redis_ui
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: "local:redis:6379:0:${REDIS_PASSWORD:-tucun_redis_dev}"
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tucun_network
+
+  # ── pgAdmin (GUI para PostgreSQL) ───────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: tucun_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@tucun.app}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/postgres/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tucun_network
+
+# ── Volumes ─────────────────────────────────────────────
+volumes:
+  postgres_data:
+    name: tucun_postgres_data
+  redis_data:
+    name: tucun_redis_data
+  pgadmin_data:
+    name: tucun_pgadmin_data
+
+# ── Network ─────────────────────────────────────────────
+networks:
+  tucun_network:
+    name: tucun_network
+    driver: bridge
