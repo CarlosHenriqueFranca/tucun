@@ -18,6 +18,8 @@ export default registerAs(
           process.env.NODE_ENV === 'production'
             ? { rejectUnauthorized: false }
             : false,
+        retryAttempts: 5,
+        retryDelay: 3000,
       };
     }
 
