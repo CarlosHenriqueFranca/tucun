@@ -2,8 +2,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
-COPY package*.json ./
-RUN npm ci
+COPY package.json ./
+RUN npm install
 
 # Copy source and build
 COPY . .
@@ -16,8 +16,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Only production deps
-COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package.json ./
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy build output
 COPY --from=builder /app/dist ./dist
