@@ -1,8 +1,8 @@
 export const API_URL = __DEV__
   ? "http://localhost:3333/api"
-  : "https://api.tucun.app/api";
+  : "https://api-production-5d85.up.railway.app/api";
 
-export const WEB_URL = __DEV__ ? "http://localhost:3000" : "https://tucun.app";
+export const WEB_URL = __DEV__ ? "http://localhost:3000" : "https://tucun.vercel.app";
 
 // ─── Mapa (MapLibre + OpenFreeMap — 100% gratuito, sem API key) ──────────────
 export const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";

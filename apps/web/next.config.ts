@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const API_URL =
   process.env.API_URL ||
   (process.env.NODE_ENV === "production"
-    ? "https://api.tucun.app"
+    ? "https://api-production-5d85.up.railway.app"
     : "http://localhost:3333");
 
 const nextConfig: NextConfig = {
