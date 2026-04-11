@@ -12,7 +12,13 @@ export class InitialSchema1712700000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Enable extensions
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
-    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "postgis"`);
+    await queryRunner.query(`
+      DO $$ BEGIN
+        CREATE EXTENSION IF NOT EXISTS "postgis";
+      EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'postgis not available, skipping';
+      END $$
+    `);
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "pg_trgm"`);
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "unaccent"`);
 
@@ -143,7 +149,6 @@ export class InitialSchema1712700000000 implements MigrationInterface {
         type spot_type NOT NULL DEFAULT 'ponto_de_pesca',
         latitude DECIMAL(10,8) NOT NULL,
         longitude DECIMAL(11,8) NOT NULL,
-        location GEOGRAPHY(POINT, 4326),
         city VARCHAR(100),
         state VARCHAR(2) DEFAULT 'RO',
         is_verified BOOLEAN DEFAULT FALSE,
@@ -157,7 +162,7 @@ export class InitialSchema1712700000000 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_spots_location ON fishing_spots USING GIST(location)`);
+    // GIST index on location skipped (requires postgis)
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_spots_type ON fishing_spots(type)`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_spots_city ON fishing_spots(city)`);
 
@@ -189,7 +194,6 @@ export class InitialSchema1712700000000 implements MigrationInterface {
         danger_level danger_level NOT NULL DEFAULT 'info',
         latitude DECIMAL(10,8) NOT NULL,
         longitude DECIMAL(11,8) NOT NULL,
-        location GEOGRAPHY(POINT, 4326),
         radius INT NOT NULL DEFAULT 100,
         reported_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
         is_verified BOOLEAN DEFAULT FALSE,
@@ -202,7 +206,7 @@ export class InitialSchema1712700000000 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_alerts_location ON route_alerts USING GIST(location)`);
+    // GIST index on route_alerts location skipped (requires postgis)
 
     // Fish Logs
     await queryRunner.query(`
@@ -491,7 +495,6 @@ export class InitialSchema1712700000000 implements MigrationInterface {
         description TEXT NOT NULL,
         latitude DECIMAL(10,8) NOT NULL,
         longitude DECIMAL(11,8) NOT NULL,
-        location GEOGRAPHY(POINT, 4326),
         media_urls JSONB DEFAULT '[]',
         status VARCHAR(20) DEFAULT 'pending',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -499,7 +502,7 @@ export class InitialSchema1712700000000 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_eco_reports_location ON eco_reports USING GIST(location)`);
+    // GIST index on eco_reports location skipped (requires postgis)
 
     // Piracema Periods
     await queryRunner.query(`
