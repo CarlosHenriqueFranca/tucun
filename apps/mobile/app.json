@@ -41,16 +41,8 @@
       "expo-location",
       "expo-camera",
       "expo-secure-store",
-      [
-        "@rnmapbox/maps",
-        {
-          "RNMapboxMapsImpl": "mapbox"
-        }
-      ]
+      "@maplibre/maplibre-react-native"
     ],
-    "extra": {
-      "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2FybG9zaGVucmlxdWVmcmFuY2EiLCJhIjoiY21udDc1M2g4MGx6aDJycTFzeTN0d2N4cSJ9.52ujdv0Fq3ZXxQOiTCp6ZQ"
-    },
     "experiments": {
       "typedRoutes": true
     }

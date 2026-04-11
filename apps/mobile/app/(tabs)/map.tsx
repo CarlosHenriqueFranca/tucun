@@ -11,19 +11,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Mapbox, {
-  MapView,
-  Camera,
-  UserLocation,
-  ShapeSource,
-  CircleLayer,
-  SymbolLayer,
-} from "@rnmapbox/maps";
+import MapLibreGL from "@maplibre/maplibre-react-native";
 // @ts-expect-error turf types need bundler resolution
 import { featureCollection, point } from "@turf/helpers";
 import {
+  MAP_STYLE_URL,
   COLORS,
-  MAPBOX_ACCESS_TOKEN,
   SPOT_TYPES,
   SPOT_TYPE_MAP,
   SpotTypeId,
@@ -31,19 +24,21 @@ import {
 import { useLocation } from "../../src/hooks/use-location";
 import { useNearbySpots, NearbySpot } from "../../src/hooks/use-nearby-spots";
 import { CreateSpotSheet } from "../../src/components/create-spot-sheet";
+import { OfflineRegionSheet } from "../../src/components/offline-region-sheet";
 
-// Initialize Mapbox
-Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
+// MapLibre + OpenFreeMap: sem token, sem custo
+MapLibreGL.setAccessToken(null);
 
 const DEFAULT_CENTER: [number, number] = [-63.9004, -8.7612]; // Porto Velho
 const DEFAULT_ZOOM = 12;
 
 export default function MapScreen() {
-  const cameraRef = useRef<Camera>(null);
+  const cameraRef = useRef<MapLibreGL.Camera>(null);
   const [activeFilter, setActiveFilter] = useState<SpotTypeId | null>(null);
   const [search, setSearch] = useState("");
   const [selectedSpot, setSelectedSpot] = useState<NearbySpot | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showOffline, setShowOffline] = useState(false);
   const [tapCoords, setTapCoords] = useState<[number, number]>(DEFAULT_CENTER);
   const [showHint, setShowHint] = useState(false);
 
@@ -53,7 +48,6 @@ export default function MapScreen() {
     radius: 100_000,
   });
 
-  // Fetch on mount + filter change
   useEffect(() => {
     const lat = location?.latitude ?? DEFAULT_CENTER[1];
     const lng = location?.longitude ?? DEFAULT_CENTER[0];
@@ -68,7 +62,6 @@ export default function MapScreen() {
     }
   }, [getCurrentLocation, fetchSpots]);
 
-  // Filter by search text
   const visibleSpots = spots.filter((s) => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -78,7 +71,6 @@ export default function MapScreen() {
     );
   });
 
-  // GeoJSON for Mapbox layers
   const geojson = featureCollection(
     visibleSpots.map((s) =>
       point([s.longitude, s.latitude], {
@@ -117,16 +109,16 @@ export default function MapScreen() {
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
       {/* MAP */}
-      <MapView
+      <MapLibreGL.MapView
         style={s.map}
-        styleURL={Mapbox.StyleURL.Dark}
+        styleURL={MAP_STYLE_URL}
         compassEnabled
         scaleBarEnabled={false}
         attributionEnabled={false}
         logoEnabled={false}
         onLongPress={handleLongPress}
       >
-        <Camera
+        <MapLibreGL.Camera
           ref={cameraRef}
           centerCoordinate={
             location
@@ -137,10 +129,10 @@ export default function MapScreen() {
           animationDuration={800}
         />
 
-        <UserLocation visible animated />
+        <MapLibreGL.UserLocation visible animated />
 
         {visibleSpots.length > 0 && (
-          <ShapeSource
+          <MapLibreGL.ShapeSource
             id="spots"
             shape={geojson}
             cluster
@@ -149,16 +141,21 @@ export default function MapScreen() {
             onPress={(e) => {
               const f = e.features[0];
               if (!f?.properties?.cluster) {
-                const spot = visibleSpots.find((sp) => sp.id === f?.properties?.id);
+                const spot = visibleSpots.find(
+                  (sp) => sp.id === f?.properties?.id
+                );
                 if (spot) {
                   setSelectedSpot(spot);
-                  cameraRef.current?.flyTo([spot.longitude, spot.latitude], 400);
+                  cameraRef.current?.flyTo(
+                    [spot.longitude, spot.latitude],
+                    400
+                  );
                 }
               }
             }}
           >
             {/* Cluster circle */}
-            <CircleLayer
+            <MapLibreGL.CircleLayer
               id="clusters"
               filter={["has", "point_count"]}
               style={{
@@ -169,19 +166,18 @@ export default function MapScreen() {
                 circleOpacity: 0.92,
               }}
             />
-            <SymbolLayer
+            <MapLibreGL.SymbolLayer
               id="cluster-count"
               filter={["has", "point_count"]}
               style={{
                 textField: ["get", "point_count_abbreviated"],
-                textFont: ["DIN Offc Pro Bold", "Arial Unicode MS Bold"],
                 textSize: 14,
                 textColor: "#fff",
               }}
             />
 
             {/* Individual spot */}
-            <CircleLayer
+            <MapLibreGL.CircleLayer
               id="spots-dot"
               filter={["!", ["has", "point_count"]]}
               style={{
@@ -191,7 +187,7 @@ export default function MapScreen() {
                 circleStrokeColor: "#fff",
               }}
             />
-            <SymbolLayer
+            <MapLibreGL.SymbolLayer
               id="spots-icon"
               filter={["!", ["has", "point_count"]]}
               style={{
@@ -200,9 +196,9 @@ export default function MapScreen() {
                 textAllowOverlap: true,
               }}
             />
-          </ShapeSource>
+          </MapLibreGL.ShapeSource>
         )}
-      </MapView>
+      </MapLibreGL.MapView>
 
       {/* SEARCH */}
       <View style={s.searchBox}>
@@ -270,6 +266,12 @@ export default function MapScreen() {
           disabled={locLoading}
         >
           <Text style={s.sideBtnTxt}>{locLoading ? "⏳" : "📍"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={s.sideBtn}
+          onPress={() => setShowOffline(true)}
+        >
+          <Text style={s.sideBtnTxt}>⬇️</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={s.sideBtn}
@@ -411,6 +413,12 @@ export default function MapScreen() {
           );
         }}
       />
+
+      {/* OFFLINE MAPS */}
+      <OfflineRegionSheet
+        visible={showOffline}
+        onClose={() => setShowOffline(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -459,7 +467,7 @@ const s = StyleSheet.create({
   sideBtnTxt: { fontSize: 20 },
 
   hint: {
-    position: "absolute", right: 68, top: 220, zIndex: 10,
+    position: "absolute", right: 68, top: 265, zIndex: 10,
     backgroundColor: COLORS.surface, borderRadius: 10, padding: 10,
     borderWidth: 1, borderColor: COLORS.border, maxWidth: 200,
   },

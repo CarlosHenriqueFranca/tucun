@@ -5,22 +5,13 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2FybG9zaGVucmlxdWVmcmFuY2EiLCJhIjoiY21udDc1M2g4MGx6aDJycTFzeTN0d2N4cSJ9.52ujdv0Fq3ZXxQOiTCp6ZQ"
-      }
+      "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2FybG9zaGVucmlxdWVmcmFuY2EiLCJhIjoiY21udDc1M2g4MGx6aDJycTFzeTN0d2N4cSJ9.52ujdv0Fq3ZXxQOiTCp6ZQ"
-      }
+      "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2FybG9zaGVucmlxdWVmcmFuY2EiLCJhIjoiY21udDc1M2g4MGx6aDJycTFzeTN0d2N4cSJ9.52ujdv0Fq3ZXxQOiTCp6ZQ"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

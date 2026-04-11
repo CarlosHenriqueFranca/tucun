@@ -4,12 +4,8 @@ export const API_URL = __DEV__
 
 export const WEB_URL = __DEV__ ? "http://localhost:3000" : "https://tucun.app";
 
-// ─── Mapbox ───────────────────────────────────────────────────────────────────
-// 1. Acesse https://account.mapbox.com/
-// 2. Crie um token público (pk.ey...) e cole abaixo
-// 3. Para o build nativo, adicione o token secreto (sk.ey...) no app.json
-export const MAPBOX_ACCESS_TOKEN =
-  process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "SEU_TOKEN_AQUI";
+// ─── Mapa (MapLibre + OpenFreeMap — 100% gratuito, sem API key) ──────────────
+export const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 // ─── Levels ───────────────────────────────────────────────────────────────────
 export const XP_LEVELS = [
