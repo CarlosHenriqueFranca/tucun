@@ -13,15 +13,11 @@ const logger = new Logger('RedisModule');
     {
       provide: REDIS_CLIENT,
       useFactory: async (config: ConfigService): Promise<Redis> => {
-        const password = config.get<string>('REDIS_PASSWORD', 'tucun_redis_dev');
-        const host = config.get<string>('REDIS_HOST', 'localhost');
-        const port = config.get<number>('REDIS_PORT', 6379);
+        const redisUrl = config.get<string>('REDIS_URL', 'redis://localhost:6379');
+        const isTls = redisUrl.startsWith('rediss://');
 
-        const redis = new Redis({
-          host,
-          port,
-          password,
-          // Don't give up on retries during development
+        const redis = new Redis(redisUrl, {
+          tls: isTls ? { rejectUnauthorized: false } : undefined,
           retryStrategy: (times: number) => {
             logger.warn(`Redis retry attempt ${times}`);
             return Math.min(times * 200, 5000); // always retry
